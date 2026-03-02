@@ -4,6 +4,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import type { Request } from 'express';
 import { UsersService } from '../../users/users.service';
+import type { AuthenticatedUser } from '../types/authenticated-request.type';
 
 export interface JwtPayload {
   sub: string;
@@ -34,11 +35,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User not found or blocked');
     }
 
-    return {
+    const authenticatedUser: AuthenticatedUser = {
       id: user.id,
       email: user.email,
       name: user.name,
       role: user.role,
     };
+
+    return authenticatedUser;
   }
 }

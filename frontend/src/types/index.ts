@@ -9,7 +9,7 @@ export interface User {
   updatedAt: string;
 }
 
-export interface AuthResponse extends User {}
+export type AuthResponse = User;
 
 export interface ApiError {
   message: string;

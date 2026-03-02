@@ -9,11 +9,13 @@ import {
   UseGuards,
   Get,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import type { AuthenticatedUser } from './types/authenticated-request.type';
 
 @Controller('auth')
 export class AuthController {
@@ -26,27 +28,39 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: any) {
+  async login(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     return this.authService.login(dto, res);
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Req() req: any, @Res({ passthrough: true }) res: any) {
-    const refreshToken = req.cookies['refresh_token'];
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refreshToken = req
+      .header('cookie')
+      ?.split(';')
+      .map((item) => item.trim())
+      .find((item) => item.startsWith('refresh_token='))
+      ?.slice('refresh_token='.length);
+
     return this.authService.refresh(refreshToken, res);
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(@Res({ passthrough: true }) res: any) {
+  logout(@Res({ passthrough: true }) res: Response) {
     this.authService.logout(res);
     return { message: 'Logged out successfully' };
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('me')
-  getMe(@CurrentUser() user: any) {
+  getMe(@CurrentUser() user: AuthenticatedUser | null) {
     return user;
   }
 }

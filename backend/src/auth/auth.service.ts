@@ -6,7 +6,9 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import type { User } from '@prisma/client';
 import { Response } from 'express';
+import type { StringValue } from 'ms';
 import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -20,12 +22,12 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(dto: RegisterDto): Promise<Omit<User, 'password'>> {
     const user = await this.usersService.create(dto);
     return user;
   }
 
-  async login(dto: LoginDto, res: Response) {
+  async login(dto: LoginDto, res: Response): Promise<Omit<User, 'password'>> {
     const user = await this.usersService.findByEmail(dto.email);
 
     if (!user) {
@@ -53,11 +55,13 @@ export class AuthService {
 
     this.setTokenCookies(res, accessToken, refreshToken);
 
-    const { password, ...userWithoutPassword } = user;
-    return userWithoutPassword;
+    return this.sanitizeUser(user);
   }
 
-  async refresh(refreshToken: string, res: Response) {
+  async refresh(
+    refreshToken: string | undefined,
+    res: Response,
+  ): Promise<Omit<User, 'password'>> {
     if (!refreshToken) {
       throw new UnauthorizedException('Refresh token not provided');
     }
@@ -84,8 +88,7 @@ export class AuthService {
 
       this.setTokenCookies(res, newAccessToken, newRefreshToken);
 
-      const { password, ...userWithoutPassword } = user;
-      return userWithoutPassword;
+      return this.sanitizeUser(user);
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
@@ -100,8 +103,10 @@ export class AuthService {
     return this.jwtService.sign(
       { ...payload },
       {
-        secret: this.configService.get<string>('JWT_ACCESS_SECRET'),
-        expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRATION'),
+        secret: this.configService.getOrThrow<string>('JWT_ACCESS_SECRET'),
+        expiresIn: this.configService.getOrThrow<StringValue>(
+          'JWT_ACCESS_EXPIRATION',
+        ),
       },
     );
   }
@@ -110,8 +115,10 @@ export class AuthService {
     return this.jwtService.sign(
       { ...payload },
       {
-        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
-        expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION'),
+        secret: this.configService.getOrThrow<string>('JWT_REFRESH_SECRET'),
+        expiresIn: this.configService.getOrThrow<StringValue>(
+          'JWT_REFRESH_EXPIRATION',
+        ),
       },
     );
   }
@@ -134,5 +141,10 @@ export class AuthService {
       secure: false,
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
+  }
+
+  private sanitizeUser(user: User): Omit<User, 'password'> {
+    const { password: _password, ...safeUser } = user;
+    return safeUser;
   }
 }
