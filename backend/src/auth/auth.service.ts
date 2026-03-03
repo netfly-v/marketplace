@@ -3,12 +3,12 @@ import {
   UnauthorizedException,
   ForbiddenException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, TokenExpiredError } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import type { User } from '@prisma/client';
 import { Response } from 'express';
-import type { StringValue } from 'ms';
+import ms, { type StringValue } from 'ms';
 import { UsersService } from '../users/users.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -89,7 +89,10 @@ export class AuthService {
       this.setTokenCookies(res, newAccessToken, newRefreshToken);
 
       return this.sanitizeUser(user);
-    } catch {
+    } catch (err) {
+      if (err instanceof TokenExpiredError) {
+        throw new UnauthorizedException('Refresh token expired');
+      }
       throw new UnauthorizedException('Invalid refresh token');
     }
   }
@@ -128,18 +131,25 @@ export class AuthService {
     accessToken: string,
     refreshToken: string,
   ) {
+    const accessExpiration = this.configService.getOrThrow<StringValue>(
+      'JWT_ACCESS_EXPIRATION',
+    );
+    const refreshExpiration = this.configService.getOrThrow<StringValue>(
+      'JWT_REFRESH_EXPIRATION',
+    );
+
     res.cookie('access_token', accessToken, {
       httpOnly: true,
       sameSite: 'lax',
       secure: false,
-      maxAge: 15 * 60 * 1000, // 15 minutes
+      maxAge: ms(accessExpiration),
     });
 
     res.cookie('refresh_token', refreshToken, {
       httpOnly: true,
       sameSite: 'lax',
       secure: false,
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: ms(refreshExpiration),
     });
   }
 

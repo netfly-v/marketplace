@@ -14,14 +14,14 @@ export interface LoginData {
 
 export const authService = {
   register: (data: RegisterData) =>
-    api.post<AuthResponse>("/auth/register", data).then((r) => r.data),
+    api.post<AuthResponse>("/api/auth/register", data).then((r) => r.data),
 
   login: (data: LoginData) =>
-    api.post<AuthResponse>("/auth/login", data).then((r) => r.data),
+    api.post<AuthResponse>("/api/auth/login", data).then((r) => r.data),
 
-  logout: () => api.post("/auth/logout").then((r) => r.data),
+  logout: () => api.post("/api/auth/logout").then((r) => r.data),
 
-  refresh: () => api.post<AuthResponse>("/auth/refresh").then((r) => r.data),
+  refresh: () => api.post<AuthResponse>("/api/auth/refresh").then((r) => r.data),
 
-  getMe: () => api.get<AuthResponse>("/auth/me").then((r) => r.data),
+  getMe: () => api.get<AuthResponse>("/api/auth/me").then((r) => r.data),
 };
