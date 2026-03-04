@@ -1,9 +1,12 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Star, Package, ShoppingCart, Pencil } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Star, Package, ShoppingCart, Pencil, Loader2, Check } from 'lucide-react';
+import { toast } from 'sonner';
 import { useProductsControllerFindOne } from '@/generated/api/products/products';
+import { useCartControllerAddItem } from '@/generated/api/cart/cart';
 import { ProductImageGallery } from '@/components/products/product-image-gallery';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,9 +17,25 @@ import { useAuthStore } from '@/store/auth.store';
 export default function ProductDetailPage(props: { params: Promise<{ id: string }> }) {
   const { id } = use(props.params);
   const { data: product, isLoading, isError } = useProductsControllerFindOne(id);
-  const { user } = useAuthStore();
+  const { user, isAuthenticated } = useAuthStore();
+  const queryClient = useQueryClient();
+  const addToCartMutation = useCartControllerAddItem();
+  const [justAdded, setJustAdded] = useState(false);
 
   const canEdit = user && product && (user.id === product.sellerId || user.role === 'ADMIN');
+
+  const handleAddToCart = async () => {
+    if (!isAuthenticated || !product) return;
+    try {
+      await addToCartMutation.mutateAsync({ data: { productId: product.id, quantity: 1 } });
+      await queryClient.invalidateQueries({ queryKey: ['/api/cart'] });
+      toast.success('Added to cart');
+      setJustAdded(true);
+      setTimeout(() => setJustAdded(false), 2000);
+    } catch {
+      toast.error('Failed to add to cart');
+    }
+  };
 
   if (isLoading) {
     return (
@@ -123,10 +142,30 @@ export default function ProductDetailPage(props: { params: Promise<{ id: string 
 
           {/* Actions */}
           <div className="flex gap-3">
-            <Button size="lg" disabled={product.stock === 0} className="flex-1">
-              <ShoppingCart className="mr-2 h-4 w-4" />
-              Add to Cart
-            </Button>
+            {isAuthenticated ? (
+              <Button
+                size="lg"
+                disabled={product.stock === 0 || addToCartMutation.isPending}
+                className="flex-1"
+                onClick={handleAddToCart}
+              >
+                {addToCartMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : justAdded ? (
+                  <Check className="mr-2 h-4 w-4" />
+                ) : (
+                  <ShoppingCart className="mr-2 h-4 w-4" />
+                )}
+                {justAdded ? 'Added!' : 'Add to Cart'}
+              </Button>
+            ) : (
+              <Button size="lg" className="flex-1" asChild>
+                <Link href="/login">
+                  <ShoppingCart className="mr-2 h-4 w-4" />
+                  Sign in to Buy
+                </Link>
+              </Button>
+            )}
             {canEdit && (
               <Button variant="outline" size="lg" asChild>
                 <Link href={`/products/${product.id}/edit`}>

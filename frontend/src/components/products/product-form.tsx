@@ -1,10 +1,12 @@
 'use client';
 
+import { useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Send, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +14,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { ImageUpload } from '@/components/products/image-upload';
 import { useCategoriesControllerFindAll } from '@/generated/api/categories/categories';
 import { useProductsControllerCreate, useProductsControllerUpdate } from '@/generated/api/products/products';
@@ -35,7 +38,9 @@ interface ProductFormProps {
 
 export function ProductForm({ product }: ProductFormProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const isEditing = !!product;
+  const publishIntentRef = useRef(true);
 
   const { data: categories } = useCategoriesControllerFindAll();
   const createMutation = useProductsControllerCreate();
@@ -61,20 +66,31 @@ export function ProductForm({ product }: ProductFormProps) {
 
   const allCategories = categories?.flatMap(cat => [cat, ...(cat.children ?? [])]) ?? [];
 
+  const invalidateProducts = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['/api/products'] });
+  };
+
   const onSubmit = async (values: FormValues) => {
+    const payload = { ...values, isPublished: isEditing ? values.isPublished : publishIntentRef.current };
+
     try {
       if (isEditing) {
-        await updateMutation.mutateAsync({
-          id: product.id,
-          data: values,
-        });
+        await updateMutation.mutateAsync({ id: product.id, data: payload });
+        await Promise.all([
+          invalidateProducts(),
+          queryClient.invalidateQueries({ queryKey: [`/api/products/${product.id}`] }),
+        ]);
         toast.success('Product updated');
         router.push(`/products/${product.id}`);
       } else {
-        const created = await createMutation.mutateAsync({
-          data: values,
-        });
-        toast.success('Product created');
+        const created = await createMutation.mutateAsync({ data: payload });
+        await invalidateProducts();
+
+        if (payload.isPublished) {
+          toast.success('Product published!');
+        } else {
+          toast.success("Product saved as draft. It won't appear in the catalog until published.");
+        }
         router.push(`/products/${created.id}`);
       }
     } catch {
@@ -84,7 +100,7 @@ export function ProductForm({ product }: ProductFormProps) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <CardTitle>{isEditing ? 'Edit Product' : 'New Product'}</CardTitle>
         </CardHeader>
@@ -139,7 +155,7 @@ export function ProductForm({ product }: ProductFormProps) {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
           <CardTitle>Images</CardTitle>
         </CardHeader>
@@ -152,38 +168,73 @@ export function ProductForm({ product }: ProductFormProps) {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-2">
-            <Controller
-              name="isPublished"
-              control={control}
-              render={({ field }) => (
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={field.value}
-                    onChange={field.onChange}
-                    className="h-4 w-4 rounded border-input"
-                  />
-                  <span className="text-sm font-medium">Publish product</span>
-                </label>
-              )}
-            />
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">Only published products are visible in the catalog</p>
-        </CardContent>
-      </Card>
+      {isEditing && (
+        <Card className="shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Visibility</p>
+                <p className="text-xs text-muted-foreground">Only published products are visible in the catalog</p>
+              </div>
+              <Controller
+                name="isPublished"
+                control={control}
+                render={({ field }) => (
+                  <button type="button" onClick={() => field.onChange(!field.value)} className="transition-colors">
+                    <Badge variant={field.value ? 'default' : 'secondary'}>{field.value ? 'Published' : 'Draft'}</Badge>
+                  </button>
+                )}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex gap-3">
-        <Button type="submit" disabled={isSubmitting} size="lg">
-          {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {isEditing ? 'Save Changes' : 'Create Product'}
-        </Button>
+        {isEditing ? (
+          <Button type="submit" disabled={isSubmitting} size="lg">
+            {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save Changes
+          </Button>
+        ) : (
+          <>
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              size="lg"
+              onClick={() => {
+                publishIntentRef.current = true;
+              }}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Send className="mr-2 h-4 w-4" />
+              Publish
+            </Button>
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+              size="lg"
+              variant="secondary"
+              onClick={() => {
+                publishIntentRef.current = false;
+              }}
+            >
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <FileText className="mr-2 h-4 w-4" />
+              Save as Draft
+            </Button>
+          </>
+        )}
         <Button type="button" variant="outline" size="lg" onClick={() => router.back()}>
           Cancel
         </Button>
       </div>
+
+      {!isEditing && (
+        <p className="text-xs text-muted-foreground">
+          Published products appear immediately in the catalog. Drafts are saved but not visible to buyers.
+        </p>
+      )}
     </form>
   );
 }

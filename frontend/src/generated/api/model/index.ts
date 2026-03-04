@@ -6,9 +6,13 @@
  * OpenAPI spec version: 1.0.0
  */
 
+export * from './addCartItemDto';
 export * from './authControllerLogout200';
 export * from './authenticatedUserDto';
 export * from './authenticatedUserDtoRole';
+export * from './cartItemProductDto';
+export * from './cartItemResponseDto';
+export * from './cartResponseDto';
 export * from './categoryResponseDto';
 export * from './categoryResponseDtoImage';
 export * from './categoryResponseDtoParentId';
@@ -23,6 +27,7 @@ export * from './productsControllerFindAllParams';
 export * from './productsControllerFindAllSortBy';
 export * from './productsControllerFindAllSortOrder';
 export * from './registerDto';
+export * from './updateCartItemDto';
 export * from './updateProductDto';
 export * from './updateUserDto';
 export * from './uploadControllerUploadImagesBody';

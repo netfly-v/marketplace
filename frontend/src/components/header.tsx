@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useMemo, useState } from 'react';
-import { ShoppingBag, LogIn, LogOut, Search, Plus, User as UserIcon, Loader2, Menu } from 'lucide-react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { ShoppingBag, ShoppingCart, LogIn, LogOut, Search, Plus, User as UserIcon, Loader2, Menu } from 'lucide-react';
+import { useDebounce } from '@/hooks/use-debounce';
+import { useCartControllerGetCart } from '@/generated/api/cart/cart';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -19,18 +21,26 @@ import { useAuthStore } from '@/store/auth.store';
 
 function SearchBar() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [searchValue, setSearchValue] = useState(searchParams.get('search') ?? '');
+  const debouncedSearch = useDebounce(searchValue);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const params = new URLSearchParams();
-    if (searchValue.trim()) params.set('search', searchValue.trim());
-    router.push(`/products?${params.toString()}`);
-  };
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    const trimmed = debouncedSearch.trim();
+    if (trimmed) {
+      params.set('search', trimmed);
+    } else {
+      params.delete('search');
+    }
+    params.set('page', '1');
+    const target = pathname === '/products' ? `/products?${params.toString()}` : `/products?${params.toString()}`;
+    router.push(target);
+  }, [debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps -- only trigger on debounced value change
 
   return (
-    <form onSubmit={handleSearch} className="ml-auto flex max-w-sm flex-1 items-center gap-2">
+    <div className="ml-auto flex max-w-sm flex-1 items-center gap-2">
       <div className="relative w-full">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
         <Input
@@ -41,7 +51,25 @@ function SearchBar() {
           onChange={e => setSearchValue(e.target.value)}
         />
       </div>
-    </form>
+    </div>
+  );
+}
+
+function MiniCart() {
+  const { data: cart } = useCartControllerGetCart();
+  const count = cart?.itemsCount ?? 0;
+
+  return (
+    <Button variant="ghost" size="icon" asChild className="relative">
+      <Link href="/cart">
+        <ShoppingCart className="h-5 w-5" />
+        {count > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+            {count > 99 ? '99+' : count}
+          </span>
+        )}
+      </Link>
+    </Button>
   );
 }
 
@@ -104,8 +132,9 @@ export function Header() {
           <SearchBar />
         </Suspense>
 
-        {/* Auth */}
+        {/* Cart + Auth */}
         <div className="flex items-center gap-2">
+          {isAuthenticated && <MiniCart />}
           {isLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           ) : isAuthenticated && user ? (

@@ -1,13 +1,14 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCategoriesControllerFindAll } from '@/generated/api/categories/categories';
+import { useDebounce } from '@/hooks/use-debounce';
 
 export function ProductFilters() {
   const router = useRouter();
@@ -15,8 +16,11 @@ export function ProductFilters() {
   const { data: categories, isLoading } = useCategoriesControllerFindAll();
 
   const currentCategory = searchParams.get('categoryId') ?? '';
-  const currentMinPrice = searchParams.get('minPrice') ?? '';
-  const currentMaxPrice = searchParams.get('maxPrice') ?? '';
+
+  const [minPrice, setMinPrice] = useState(searchParams.get('minPrice') ?? '');
+  const [maxPrice, setMaxPrice] = useState(searchParams.get('maxPrice') ?? '');
+  const debouncedMin = useDebounce(minPrice);
+  const debouncedMax = useDebounce(maxPrice);
 
   const updateFilter = useCallback(
     (key: string, value: string) => {
@@ -32,11 +36,21 @@ export function ProductFilters() {
     [router, searchParams]
   );
 
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (debouncedMin) params.set('minPrice', debouncedMin); else params.delete('minPrice');
+    if (debouncedMax) params.set('maxPrice', debouncedMax); else params.delete('maxPrice');
+    params.set('page', '1');
+    router.push(`/products?${params.toString()}`);
+  }, [debouncedMin, debouncedMax]); // eslint-disable-line react-hooks/exhaustive-deps -- only trigger on debounced values
+
   const clearFilters = useCallback(() => {
+    setMinPrice('');
+    setMaxPrice('');
     router.push('/products');
   }, [router]);
 
-  const hasFilters = currentCategory || currentMinPrice || currentMaxPrice;
+  const hasFilters = currentCategory || minPrice || maxPrice;
 
   return (
     <aside className="space-y-6">
@@ -99,8 +113,8 @@ export function ProductFilters() {
               type="number"
               placeholder="0"
               min={0}
-              value={currentMinPrice}
-              onChange={e => updateFilter('minPrice', e.target.value)}
+              value={minPrice}
+              onChange={e => setMinPrice(e.target.value)}
             />
           </div>
           <span className="mt-5 text-muted-foreground">—</span>
@@ -113,8 +127,8 @@ export function ProductFilters() {
               type="number"
               placeholder="Any"
               min={0}
-              value={currentMaxPrice}
-              onChange={e => updateFilter('maxPrice', e.target.value)}
+              value={maxPrice}
+              onChange={e => setMaxPrice(e.target.value)}
             />
           </div>
         </div>
