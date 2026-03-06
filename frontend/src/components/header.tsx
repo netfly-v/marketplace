@@ -3,7 +3,18 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
-import { ShoppingBag, ShoppingCart, LogIn, LogOut, Search, Plus, User as UserIcon, Loader2, Menu } from 'lucide-react';
+import {
+  ShoppingBag,
+  ShoppingCart,
+  LogIn,
+  LogOut,
+  Search,
+  Plus,
+  User as UserIcon,
+  Loader2,
+  Menu,
+  Package,
+} from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useCartControllerGetCart } from '@/generated/api/cart/cart';
 import { Button } from '@/components/ui/button';
@@ -104,7 +115,7 @@ export function Header() {
   );
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60">
       <div className="container mx-auto flex h-14 items-center gap-4 px-4">
         {/* Mobile menu */}
         <Sheet>
@@ -151,6 +162,12 @@ export function Header() {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem className="font-medium">{user.email}</DropdownMenuItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/orders">
+                    <Package className="mr-2 h-4 w-4" />
+                    My Orders
+                  </Link>
+                </DropdownMenuItem>
                 {isSeller && (
                   <DropdownMenuItem asChild>
                     <Link href="/products/new">
@@ -160,7 +177,7 @@ export function Header() {
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => logout()}>
+                <DropdownMenuItem onClick={() => void logout()}>
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign Out
                 </DropdownMenuItem>

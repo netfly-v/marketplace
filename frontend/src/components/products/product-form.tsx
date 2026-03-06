@@ -99,7 +99,7 @@ export function ProductForm({ product }: ProductFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={(e) => void handleSubmit(onSubmit)(e)} className="space-y-6">
       <Card className="shadow-sm">
         <CardHeader>
           <CardTitle>{isEditing ? 'Edit Product' : 'New Product'}</CardTitle>

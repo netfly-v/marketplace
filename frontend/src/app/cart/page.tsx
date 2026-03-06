@@ -218,12 +218,9 @@ export default function CartPage() {
                   <span>Total</span>
                   <span>${cart.total.toFixed(2)}</span>
                 </div>
-                <Button size="lg" className="w-full" disabled>
-                  Proceed to Checkout
+                <Button size="lg" className="w-full" asChild>
+                  <Link href="/checkout">Proceed to Checkout</Link>
                 </Button>
-                <p className="text-center text-xs text-muted-foreground">
-                  Checkout will be available in the next phase
-                </p>
               </CardContent>
             </Card>
           </div>

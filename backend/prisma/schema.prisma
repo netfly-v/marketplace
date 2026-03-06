@@ -119,9 +119,10 @@ model CartItem {
 }
 
 model Order {
-  id     String      @id @default(uuid())
-  total  Float
-  status OrderStatus @default(PENDING)
+  id              String      @id @default(uuid())
+  total           Float
+  status          OrderStatus @default(PENDING)
+  shippingAddress String
 
   userId String
   user   User   @relation(fields: [userId], references: [id])
