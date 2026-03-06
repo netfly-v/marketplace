@@ -12,6 +12,7 @@ export class UserResponseDto {
   name: string;
 
   @ApiProperty({
+    type: String,
     nullable: true,
     example: 'https://cdn.example.com/avatar.png',
     required: false,
@@ -23,6 +24,30 @@ export class UserResponseDto {
 
   @ApiProperty({ example: false })
   isBlocked: boolean;
+
+  @ApiProperty({ type: String, nullable: true, required: false })
+  shippingName: string | null;
+
+  @ApiProperty({ type: String, nullable: true, required: false })
+  shippingPhone: string | null;
+
+  @ApiProperty({ type: String, nullable: true, required: false })
+  shippingCountry: string | null;
+
+  @ApiProperty({ type: String, nullable: true, required: false })
+  shippingCity: string | null;
+
+  @ApiProperty({ type: String, nullable: true, required: false })
+  shippingStreetLine1: string | null;
+
+  @ApiProperty({ type: String, nullable: true, required: false })
+  shippingStreetLine2: string | null;
+
+  @ApiProperty({ type: String, nullable: true, required: false })
+  shippingPostalCode: string | null;
+
+  @ApiProperty({ type: String, nullable: true, required: false })
+  shippingDeliveryInstructions: string | null;
 
   @ApiProperty({ example: '2026-01-01T10:00:00.000Z' })
   createdAt: Date;

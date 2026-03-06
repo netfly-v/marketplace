@@ -14,4 +14,12 @@ export interface UpdateUserDto {
   name?: string;
   /** Avatar image URL */
   avatar?: string;
+  shippingName?: string;
+  shippingPhone?: string;
+  shippingCountry?: string;
+  shippingCity?: string;
+  shippingStreetLine1?: string;
+  shippingStreetLine2?: string;
+  shippingPostalCode?: string;
+  shippingDeliveryInstructions?: string;
 }

@@ -6,7 +6,9 @@
  * OpenAPI spec version: 1.0.0
  */
 
-/**
- * @nullable
- */
-export type UserResponseDtoAvatar = { [key: string]: unknown } | null;
+export interface ReviewUserDto {
+  id: string;
+  name: string;
+  /** @nullable */
+  avatar: string | null;
+}

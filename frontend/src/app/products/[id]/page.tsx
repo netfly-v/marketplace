@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ReviewList } from '@/components/reviews/review-list';
 import { useAuthStore } from '@/store/auth.store';
 
 export default function ProductDetailPage(props: { params: Promise<{ id: string }> }) {
@@ -183,6 +184,12 @@ export default function ProductDetailPage(props: { params: Promise<{ id: string 
           </div>
         </div>
       </div>
+
+      <ReviewList
+        productId={product.id}
+        avgRating={product.avgRating != null ? Number(product.avgRating) : null}
+        reviewsCount={product.reviewsCount}
+      />
     </div>
   );
 }

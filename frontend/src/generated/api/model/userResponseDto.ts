@@ -5,7 +5,6 @@
  * API documentation for marketplace backend
  * OpenAPI spec version: 1.0.0
  */
-import type { UserResponseDtoAvatar } from './userResponseDtoAvatar';
 import type { UserResponseDtoRole } from './userResponseDtoRole';
 
 export interface UserResponseDto {
@@ -13,9 +12,25 @@ export interface UserResponseDto {
   email: string;
   name: string;
   /** @nullable */
-  avatar?: UserResponseDtoAvatar;
+  avatar?: string | null;
   role: UserResponseDtoRole;
   isBlocked: boolean;
+  /** @nullable */
+  shippingName?: string | null;
+  /** @nullable */
+  shippingPhone?: string | null;
+  /** @nullable */
+  shippingCountry?: string | null;
+  /** @nullable */
+  shippingCity?: string | null;
+  /** @nullable */
+  shippingStreetLine1?: string | null;
+  /** @nullable */
+  shippingStreetLine2?: string | null;
+  /** @nullable */
+  shippingPostalCode?: string | null;
+  /** @nullable */
+  shippingDeliveryInstructions?: string | null;
   createdAt: string;
   updatedAt: string;
 }

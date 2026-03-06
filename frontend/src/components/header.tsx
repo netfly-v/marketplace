@@ -163,6 +163,12 @@ export function Header() {
                 <DropdownMenuItem className="font-medium">{user.email}</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
+                  <Link href="/profile">
+                    <UserIcon className="mr-2 h-4 w-4" />
+                    My Profile
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
                   <Link href="/orders">
                     <Package className="mr-2 h-4 w-4" />
                     My Orders

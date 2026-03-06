@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -12,6 +12,7 @@ import { ArrowLeft, Loader2, MapPin, Phone, ShoppingBag, Package, UserRound } fr
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -19,6 +20,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { useCartControllerGetCart } from '@/generated/api/cart/cart';
 import { useOrdersControllerCreate } from '@/generated/api/orders/orders';
+import { useUsersControllerGetProfile, useUsersControllerUpdateProfile } from '@/generated/api/users/users';
 import { useAuthStore } from '@/store/auth.store';
 
 const PLACEHOLDER = '/placeholder-product.svg';
@@ -67,6 +69,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading: authLoading } = useAuthStore();
+  const [saveAddress, setSaveAddress] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -78,11 +81,26 @@ export default function CheckoutPage() {
     query: { enabled: isAuthenticated },
   });
 
+  const { data: profile } = useUsersControllerGetProfile({
+    query: { enabled: isAuthenticated },
+  });
+
   const createOrderMutation = useOrdersControllerCreate();
+  const updateProfileMutation = useUsersControllerUpdateProfile();
+
+  const hasSavedAddress = !!(
+    profile?.shippingName &&
+    profile?.shippingPhone &&
+    profile?.shippingCountry &&
+    profile?.shippingCity &&
+    profile?.shippingStreetLine1 &&
+    profile?.shippingPostalCode
+  );
 
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<CheckoutFormValues>({
     resolver: yupResolver(schema),
@@ -98,8 +116,38 @@ export default function CheckoutPage() {
     },
   });
 
+  useEffect(() => {
+    if (hasSavedAddress && profile) {
+      reset({
+        recipientName: profile.shippingName ?? '',
+        phone: profile.shippingPhone ?? '',
+        country: profile.shippingCountry ?? '',
+        city: profile.shippingCity ?? '',
+        streetLine1: profile.shippingStreetLine1 ?? '',
+        streetLine2: profile.shippingStreetLine2 ?? '',
+        postalCode: profile.shippingPostalCode ?? '',
+        deliveryInstructions: profile.shippingDeliveryInstructions ?? '',
+      });
+    }
+  }, [hasSavedAddress, profile, reset]);
+
   const onSubmit = async (values: CheckoutFormValues) => {
     try {
+      if (saveAddress) {
+        await updateProfileMutation.mutateAsync({
+          data: {
+            shippingName: values.recipientName,
+            shippingPhone: values.phone,
+            shippingCountry: values.country,
+            shippingCity: values.city,
+            shippingStreetLine1: values.streetLine1,
+            shippingStreetLine2: values.streetLine2 || undefined,
+            shippingPostalCode: values.postalCode,
+            shippingDeliveryInstructions: values.deliveryInstructions || undefined,
+          },
+        });
+      }
+
       const result = await createOrderMutation.mutateAsync({
         data: {
           shippingAddress: {
@@ -189,11 +237,7 @@ export default function CheckoutPage() {
               <CardContent>
                 <div className="space-y-2">
                   <Label htmlFor="recipientName">Full name</Label>
-                  <Input
-                    id="recipientName"
-                    {...register('recipientName')}
-                    placeholder="Alex Johnson"
-                  />
+                  <Input id="recipientName" {...register('recipientName')} placeholder="Alex Johnson" />
                   {errors.recipientName && (
                     <p className="text-sm text-destructive">{errors.recipientName.message}</p>
                   )}
@@ -211,14 +255,8 @@ export default function CheckoutPage() {
               <CardContent>
                 <div className="space-y-2">
                   <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    {...register('phone')}
-                    placeholder="+1 555 123 4567"
-                  />
-                  {errors.phone && (
-                    <p className="text-sm text-destructive">{errors.phone.message}</p>
-                  )}
+                  <Input id="phone" {...register('phone')} placeholder="+1 555 123 4567" />
+                  {errors.phone && <p className="text-sm text-destructive">{errors.phone.message}</p>}
                 </div>
               </CardContent>
             </Card>
@@ -231,68 +269,37 @@ export default function CheckoutPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {hasSavedAddress && (
+                  <p className="text-sm text-muted-foreground">
+                    Fields pre-filled from your saved address. You can edit them for this order.
+                  </p>
+                )}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="country">Country</Label>
-                    <Input
-                      id="country"
-                      {...register('country')}
-                      placeholder="United States"
-                    />
-                    {errors.country && (
-                      <p className="text-sm text-destructive">{errors.country.message}</p>
-                    )}
+                    <Input id="country" {...register('country')} placeholder="United States" />
+                    {errors.country && <p className="text-sm text-destructive">{errors.country.message}</p>}
                   </div>
-
                   <div className="space-y-2">
                     <Label htmlFor="city">City</Label>
-                    <Input
-                      id="city"
-                      {...register('city')}
-                      placeholder="New York"
-                    />
-                    {errors.city && (
-                      <p className="text-sm text-destructive">{errors.city.message}</p>
-                    )}
+                    <Input id="city" {...register('city')} placeholder="New York" />
+                    {errors.city && <p className="text-sm text-destructive">{errors.city.message}</p>}
                   </div>
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="streetLine1">Street address</Label>
-                  <Input
-                    id="streetLine1"
-                    {...register('streetLine1')}
-                    placeholder="123 Main Street"
-                  />
-                  {errors.streetLine1 && (
-                    <p className="text-sm text-destructive">{errors.streetLine1.message}</p>
-                  )}
+                  <Input id="streetLine1" {...register('streetLine1')} placeholder="123 Main Street" />
+                  {errors.streetLine1 && <p className="text-sm text-destructive">{errors.streetLine1.message}</p>}
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="streetLine2">Apartment, suite, floor</Label>
-                  <Input
-                    id="streetLine2"
-                    {...register('streetLine2')}
-                    placeholder="Apt 4B"
-                  />
-                  {errors.streetLine2 && (
-                    <p className="text-sm text-destructive">{errors.streetLine2.message}</p>
-                  )}
+                  <Input id="streetLine2" {...register('streetLine2')} placeholder="Apt 4B" />
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="postalCode">Postal code</Label>
-                  <Input
-                    id="postalCode"
-                    {...register('postalCode')}
-                    placeholder="10001"
-                  />
-                  {errors.postalCode && (
-                    <p className="text-sm text-destructive">{errors.postalCode.message}</p>
-                  )}
+                  <Input id="postalCode" {...register('postalCode')} placeholder="10001" />
+                  {errors.postalCode && <p className="text-sm text-destructive">{errors.postalCode.message}</p>}
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="deliveryInstructions">Delivery instructions</Label>
                   <Textarea
@@ -300,12 +307,19 @@ export default function CheckoutPage() {
                     {...register('deliveryInstructions')}
                     placeholder="Leave the package with the concierge"
                   />
-                  {errors.deliveryInstructions && (
-                    <p className="text-sm text-destructive">
-                      {errors.deliveryInstructions.message}
-                    </p>
-                  )}
                 </div>
+                {!hasSavedAddress && (
+                  <div className="flex items-center gap-2 pt-2">
+                    <Checkbox
+                      id="saveAddress"
+                      checked={saveAddress}
+                      onCheckedChange={(checked) => setSaveAddress(checked === true)}
+                    />
+                    <Label htmlFor="saveAddress" className="text-sm font-normal">
+                      Save this address for future orders
+                    </Label>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -359,8 +373,15 @@ export default function CheckoutPage() {
                   <span>Total</span>
                   <span>${cart.total.toFixed(2)}</span>
                 </div>
-                <Button type="submit" size="lg" className="w-full" disabled={createOrderMutation.isPending}>
-                  {createOrderMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="w-full"
+                  disabled={createOrderMutation.isPending || updateProfileMutation.isPending}
+                >
+                  {(createOrderMutation.isPending || updateProfileMutation.isPending) && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
                   Continue to Payment
                 </Button>
                 <p className="text-center text-xs text-muted-foreground">

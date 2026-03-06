@@ -292,7 +292,7 @@ export class PaymentsService {
         const object = event.data.object;
         if (isPaymentIntent(object)) {
           await this.markPaymentFailed(
-            object.metadata.orderId,
+            object.metadata?.orderId,
             null,
             object.id,
           );
