@@ -8,7 +8,9 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -22,6 +24,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrderQueryDto } from './dto/order-query.dto';
 import {
+  CreateOrderCheckoutResponseDto,
   OrderResponseDto,
   PaginatedOrdersResponseDto,
 } from './dto/order-response.dto';
@@ -38,20 +41,43 @@ import type { AuthenticatedUser } from '../auth/types/authenticated-request.type
 export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
+  private resolveFrontendOrigin(req: Request): string | undefined {
+    const origin = req.headers.origin;
+    if (typeof origin === 'string' && origin.length > 0) {
+      return origin;
+    }
+
+    const referer = req.headers.referer;
+    if (typeof referer === 'string' && referer.length > 0) {
+      try {
+        return new URL(referer).origin;
+      } catch {
+        return undefined;
+      }
+    }
+
+    return undefined;
+  }
+
   @Post()
   @ApiOperation({ summary: 'Create order from current cart' })
   @ApiResponse({
     status: 201,
-    description: 'Order created, cart cleared, stock decremented',
-    type: OrderResponseDto,
+    description: 'Order created and Stripe Checkout session generated',
+    type: CreateOrderCheckoutResponseDto,
   })
   @ApiResponse({ status: 400, description: 'Cart empty / Not enough stock' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async create(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateOrderDto,
-  ): Promise<OrderResponseDto> {
-    return this.ordersService.createOrder(user.id, dto);
+    @Req() req: Request,
+  ): Promise<CreateOrderCheckoutResponseDto> {
+    return this.ordersService.createOrder(
+      user.id,
+      dto,
+      this.resolveFrontendOrigin(req),
+    );
   }
 
   @Get()

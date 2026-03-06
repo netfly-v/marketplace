@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
-import { ArrowLeft, Loader2, MapPin, ShoppingBag, Package } from 'lucide-react';
+import { ArrowLeft, Loader2, MapPin, Phone, ShoppingBag, Package, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,20 +16,52 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 import { useCartControllerGetCart } from '@/generated/api/cart/cart';
 import { useOrdersControllerCreate } from '@/generated/api/orders/orders';
 import { useAuthStore } from '@/store/auth.store';
 
 const PLACEHOLDER = '/placeholder-product.svg';
 
-const schema = yup.object({
-  shippingAddress: yup
-    .string()
-    .min(5, 'Address must be at least 5 characters')
-    .required('Shipping address is required'),
-});
+type CheckoutFormValues = {
+  recipientName: string;
+  phone: string;
+  country: string;
+  city: string;
+  streetLine1: string;
+  streetLine2?: string;
+  postalCode: string;
+  deliveryInstructions?: string;
+};
 
-type CheckoutFormValues = yup.InferType<typeof schema>;
+const schema: yup.ObjectSchema<CheckoutFormValues> = yup.object({
+  recipientName: yup
+    .string()
+    .min(2, 'Recipient name must be at least 2 characters')
+    .required('Recipient name is required'),
+  phone: yup
+    .string()
+    .min(7, 'Phone must be at least 7 characters')
+    .required('Phone is required'),
+  country: yup
+    .string()
+    .min(2, 'Country must be at least 2 characters')
+    .required('Country is required'),
+  city: yup
+    .string()
+    .min(2, 'City must be at least 2 characters')
+    .required('City is required'),
+  streetLine1: yup
+    .string()
+    .min(5, 'Street address must be at least 5 characters')
+    .required('Street address is required'),
+  streetLine2: yup.string().optional(),
+  postalCode: yup
+    .string()
+    .min(3, 'Postal code must be at least 3 characters')
+    .required('Postal code is required'),
+  deliveryInstructions: yup.string().optional(),
+});
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -54,17 +86,40 @@ export default function CheckoutPage() {
     formState: { errors },
   } = useForm<CheckoutFormValues>({
     resolver: yupResolver(schema),
-    defaultValues: { shippingAddress: '' },
+    defaultValues: {
+      recipientName: '',
+      phone: '',
+      country: '',
+      city: '',
+      streetLine1: '',
+      streetLine2: '',
+      postalCode: '',
+      deliveryInstructions: '',
+    },
   });
 
   const onSubmit = async (values: CheckoutFormValues) => {
     try {
-      const order = await createOrderMutation.mutateAsync({
-        data: { shippingAddress: values.shippingAddress },
+      const result = await createOrderMutation.mutateAsync({
+        data: {
+          shippingAddress: {
+            recipientName: values.recipientName,
+            phone: values.phone,
+            country: values.country,
+            city: values.city,
+            streetLine1: values.streetLine1,
+            streetLine2: values.streetLine2 || undefined,
+            postalCode: values.postalCode,
+            deliveryInstructions: values.deliveryInstructions || undefined,
+          },
+        },
       });
+
       await queryClient.invalidateQueries({ queryKey: ['/api/cart'] });
-      toast.success('Order placed successfully!');
-      router.push(`/orders/${order.id}`);
+      await queryClient.invalidateQueries({ queryKey: ['/api/orders'] });
+      queryClient.setQueryData([`/api/orders/${result.order.id}`], result.order);
+      toast.success('Redirecting to Stripe Checkout...');
+      window.location.assign(result.checkoutUrl);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to place order';
       toast.error(message);
@@ -127,20 +182,128 @@ export default function CheckoutPage() {
             <Card className="shadow-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <MapPin className="h-5 w-5" />
-                  Shipping Address
+                  <UserRound className="h-5 w-5" />
+                  Recipient
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  <Label htmlFor="shippingAddress">Full address</Label>
+                  <Label htmlFor="recipientName">Full name</Label>
                   <Input
-                    id="shippingAddress"
-                    {...register('shippingAddress')}
-                    placeholder="123 Main St, City, State, ZIP"
+                    id="recipientName"
+                    {...register('recipientName')}
+                    placeholder="Alex Johnson"
                   />
-                  {errors.shippingAddress && (
-                    <p className="text-sm text-destructive">{errors.shippingAddress.message}</p>
+                  {errors.recipientName && (
+                    <p className="text-sm text-destructive">{errors.recipientName.message}</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Phone className="h-5 w-5" />
+                  Contact
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input
+                    id="phone"
+                    {...register('phone')}
+                    placeholder="+1 555 123 4567"
+                  />
+                  {errors.phone && (
+                    <p className="text-sm text-destructive">{errors.phone.message}</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="h-5 w-5" />
+                  Shipping Address
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="country">Country</Label>
+                    <Input
+                      id="country"
+                      {...register('country')}
+                      placeholder="United States"
+                    />
+                    {errors.country && (
+                      <p className="text-sm text-destructive">{errors.country.message}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="city">City</Label>
+                    <Input
+                      id="city"
+                      {...register('city')}
+                      placeholder="New York"
+                    />
+                    {errors.city && (
+                      <p className="text-sm text-destructive">{errors.city.message}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="streetLine1">Street address</Label>
+                  <Input
+                    id="streetLine1"
+                    {...register('streetLine1')}
+                    placeholder="123 Main Street"
+                  />
+                  {errors.streetLine1 && (
+                    <p className="text-sm text-destructive">{errors.streetLine1.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="streetLine2">Apartment, suite, floor</Label>
+                  <Input
+                    id="streetLine2"
+                    {...register('streetLine2')}
+                    placeholder="Apt 4B"
+                  />
+                  {errors.streetLine2 && (
+                    <p className="text-sm text-destructive">{errors.streetLine2.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="postalCode">Postal code</Label>
+                  <Input
+                    id="postalCode"
+                    {...register('postalCode')}
+                    placeholder="10001"
+                  />
+                  {errors.postalCode && (
+                    <p className="text-sm text-destructive">{errors.postalCode.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="deliveryInstructions">Delivery instructions</Label>
+                  <Textarea
+                    id="deliveryInstructions"
+                    {...register('deliveryInstructions')}
+                    placeholder="Leave the package with the concierge"
+                  />
+                  {errors.deliveryInstructions && (
+                    <p className="text-sm text-destructive">
+                      {errors.deliveryInstructions.message}
+                    </p>
                   )}
                 </div>
               </CardContent>
@@ -198,10 +361,10 @@ export default function CheckoutPage() {
                 </div>
                 <Button type="submit" size="lg" className="w-full" disabled={createOrderMutation.isPending}>
                   {createOrderMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Place Order
+                  Continue to Payment
                 </Button>
                 <p className="text-center text-xs text-muted-foreground">
-                  Payment integration coming in the next phase
+                  You will be redirected to Stripe Checkout to complete payment securely
                 </p>
               </CardContent>
             </Card>

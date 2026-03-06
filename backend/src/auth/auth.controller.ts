@@ -92,12 +92,7 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken = req
-      .header('cookie')
-      ?.split(';')
-      .map((item) => item.trim())
-      .find((item) => item.startsWith('refresh_token='))
-      ?.slice('refresh_token='.length);
+    const refreshToken = req.cookies?.refresh_token as string | undefined;
 
     return this.authService.refresh(refreshToken, res);
   }

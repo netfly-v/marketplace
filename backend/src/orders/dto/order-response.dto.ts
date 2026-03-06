@@ -1,6 +1,32 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { OrderStatus } from '@prisma/client';
 
+export class ShippingAddressResponseDto {
+  @ApiProperty()
+  recipientName: string;
+
+  @ApiProperty()
+  phone: string;
+
+  @ApiProperty()
+  country: string;
+
+  @ApiProperty()
+  city: string;
+
+  @ApiProperty()
+  streetLine1: string;
+
+  @ApiProperty({ type: String, required: false, nullable: true })
+  streetLine2: string | null;
+
+  @ApiProperty()
+  postalCode: string;
+
+  @ApiProperty({ type: String, required: false, nullable: true })
+  deliveryInstructions: string | null;
+}
+
 class OrderItemProductDto {
   @ApiProperty()
   id: string;
@@ -42,8 +68,8 @@ export class OrderResponseDto {
   @ApiProperty()
   total: number;
 
-  @ApiProperty()
-  shippingAddress: string;
+  @ApiProperty({ type: ShippingAddressResponseDto })
+  shippingAddress: ShippingAddressResponseDto;
 
   @ApiProperty()
   userId: string;
@@ -59,6 +85,16 @@ export class OrderResponseDto {
 
   @ApiProperty()
   updatedAt: Date;
+}
+
+export class CreateOrderCheckoutResponseDto {
+  @ApiProperty({ type: OrderResponseDto })
+  order: OrderResponseDto;
+
+  @ApiProperty({
+    description: 'Hosted Stripe Checkout URL where the client should redirect',
+  })
+  checkoutUrl: string;
 }
 
 export class PaginatedOrdersResponseDto {

@@ -1,6 +1,8 @@
 "use client";
 
 import { create } from "zustand";
+import { clearProtectedQueries } from "@/lib/auth-cache";
+import { getQueryClient } from "@/lib/query-client";
 import type { User } from "@/types";
 import { authService, type LoginData, type RegisterData } from "@/services/auth.service";
 
@@ -9,16 +11,28 @@ interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
 
+  setAuthenticatedUser: (user: User | null) => void;
+  clearAuthState: () => void;
   login: (data: LoginData) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: true,
   isAuthenticated: false,
+
+  setAuthenticatedUser: (user) => {
+    set({ user, isAuthenticated: !!user });
+  },
+
+  clearAuthState: () => {
+    const queryClient = getQueryClient();
+    clearProtectedQueries(queryClient);
+    set({ user: null, isAuthenticated: false });
+  },
 
   login: async (data) => {
     const user = await authService.login(data);
@@ -30,8 +44,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    await authService.logout();
-    set({ user: null, isAuthenticated: false });
+    try {
+      await authService.logout();
+    } finally {
+      get().clearAuthState();
+    }
   },
 
   checkAuth: async () => {
@@ -40,12 +57,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const user = await authService.getMe();
       set({ user, isAuthenticated: true });
     } catch {
-      try {
-        const user = await authService.refresh();
-        set({ user, isAuthenticated: true });
-      } catch {
-        set({ user: null, isAuthenticated: false });
-      }
+      get().clearAuthState();
     } finally {
       set({ isLoading: false });
     }

@@ -5,7 +5,20 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Loader2, MapPin, Package, XCircle, Clock, CheckCircle2, Truck, Ban } from 'lucide-react';
+import {
+  ArrowLeft,
+  Loader2,
+  MapPin,
+  Package,
+  XCircle,
+  Clock,
+  CheckCircle2,
+  Truck,
+  Ban,
+  CreditCard,
+  Phone,
+  UserRound,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +26,8 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useOrdersControllerFindOne, useOrdersControllerCancel } from '@/generated/api/orders/orders';
+import type { OrderResponseDto } from '@/generated/api/model';
+import { usePaymentsControllerCreateCheckoutSession } from '@/generated/api/payments/payments';
 import { useAuthStore } from '@/store/auth.store';
 
 const PLACEHOLDER = '/placeholder-product.svg';
@@ -43,6 +58,17 @@ function shortId(id: string): string {
   return id.slice(0, 8).toUpperCase();
 }
 
+function formatShippingAddress(order: OrderResponseDto): string[] {
+  const lines = [
+    order.shippingAddress.streetLine1,
+    order.shippingAddress.streetLine2,
+    `${order.shippingAddress.city}, ${order.shippingAddress.postalCode}`,
+    order.shippingAddress.country,
+  ];
+
+  return lines.filter((line): line is string => Boolean(line));
+}
+
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -54,6 +80,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   });
 
   const cancelMutation = useOrdersControllerCancel();
+  const payNowMutation = usePaymentsControllerCreateCheckoutSession();
 
   const handleCancel = async () => {
     try {
@@ -65,6 +92,17 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       toast.success('Order cancelled');
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to cancel order';
+      toast.error(message);
+    }
+  };
+
+  const handlePayNow = async () => {
+    try {
+      const session = await payNowMutation.mutateAsync({ orderId: id });
+      toast.success('Redirecting to Stripe Checkout...');
+      window.location.assign(session.checkoutUrl);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to start payment';
       toast.error(message);
     }
   };
@@ -108,6 +146,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
   const statusCfg = STATUS_CONFIG[order.status as string] ?? STATUS_CONFIG.PENDING;
   const StatusIcon = statusCfg.icon;
+  const shippingLines = formatShippingAddress(order);
 
   return (
     <div className="container mx-auto max-w-3xl px-4 py-8">
@@ -137,8 +176,27 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               Shipping Address
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p>{order.shippingAddress}</p>
+          <CardContent className="space-y-4">
+            <div className="space-y-1">
+              <p className="flex items-center gap-2 font-medium">
+                <UserRound className="h-4 w-4 text-muted-foreground" />
+                {order.shippingAddress.recipientName}
+              </p>
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Phone className="h-4 w-4" />
+                {order.shippingAddress.phone}
+              </p>
+            </div>
+            <div className="space-y-1 text-sm">
+              {shippingLines.map(line => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
+            {order.shippingAddress.deliveryInstructions && (
+              <div className="rounded-lg bg-muted/60 p-3 text-sm text-muted-foreground">
+                {order.shippingAddress.deliveryInstructions}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -192,24 +250,41 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
         {order.status === 'PENDING' && (
           <Card className="border-destructive/20 shadow-sm">
-            <CardContent className="flex items-center justify-between p-4">
-              <div>
-                <p className="font-medium">Cancel this order?</p>
-                <p className="text-sm text-muted-foreground">Stock will be restored for all items</p>
+            <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <p className="font-medium">Payment pending</p>
+                <p className="text-sm text-muted-foreground">
+                  Complete payment in Stripe or cancel this order to restore stock
+                </p>
               </div>
-              <Button
-                variant="destructive"
-                size="sm"
-                disabled={cancelMutation.isPending}
-                onClick={() => void handleCancel()}
-              >
-                {cancelMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <XCircle className="mr-2 h-4 w-4" />
-                )}
-                Cancel Order
-              </Button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  size="sm"
+                  disabled={payNowMutation.isPending}
+                  onClick={() => void handlePayNow()}
+                >
+                  {payNowMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <CreditCard className="mr-2 h-4 w-4" />
+                  )}
+                  Pay Now
+                </Button>
+
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  disabled={cancelMutation.isPending}
+                  onClick={() => void handleCancel()}
+                >
+                  {cancelMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <XCircle className="mr-2 h-4 w-4" />
+                  )}
+                  Cancel Order
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}

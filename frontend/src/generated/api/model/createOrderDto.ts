@@ -5,8 +5,9 @@
  * API documentation for marketplace backend
  * OpenAPI spec version: 1.0.0
  */
+import type { ShippingAddressDto } from './shippingAddressDto';
 
 export interface CreateOrderDto {
-  /** Shipping address for the order */
-  shippingAddress: string;
+  /** Structured shipping snapshot for this order */
+  shippingAddress: ShippingAddressDto;
 }

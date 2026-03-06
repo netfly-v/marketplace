@@ -4,100 +4,139 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { OrderStatus } from '@prisma/client';
+import { PaymentStatus, OrderStatus } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateOrderDto } from './dto/create-order.dto';
+import { PaymentsService } from '../payments/payments.service';
+import { CreateOrderDto, ShippingAddressDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { OrderQueryDto } from './dto/order-query.dto';
 import type {
+  CreateOrderCheckoutResponseDto,
   OrderResponseDto,
   PaginatedOrdersResponseDto,
+  ShippingAddressResponseDto,
 } from './dto/order-response.dto';
+
+type CheckoutCartItemSnapshot = {
+  productId: string;
+  title: string;
+  images: string[];
+  quantity: number;
+  price: number;
+};
+
+type CheckoutCartSnapshot = {
+  cartId: string;
+  userEmail: string;
+  items: CheckoutCartItemSnapshot[];
+  total: number;
+};
 
 @Injectable()
 export class OrdersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   async createOrder(
     userId: string,
     dto: CreateOrderDto,
-  ): Promise<OrderResponseDto> {
-    return this.prisma.$transaction(async (tx) => {
-      const cart = await tx.cart.findUnique({
-        where: { userId },
-        include: {
-          items: {
-            include: {
-              product: {
-                select: {
-                  id: true,
-                  title: true,
-                  price: true,
-                  stock: true,
-                  images: true,
-                  isPublished: true,
+    frontendOrigin?: string,
+  ): Promise<CreateOrderCheckoutResponseDto> {
+    const cartSnapshot = await this.getCheckoutCartSnapshot(userId);
+    const orderId = randomUUID();
+
+    const session = await this.paymentsService.createCheckoutSession({
+      orderId,
+      userId,
+      userEmail: cartSnapshot.userEmail,
+      frontendOrigin,
+      items: cartSnapshot.items.map((item) => ({
+        productId: item.productId,
+        title: item.title,
+        quantity: item.quantity,
+        price: item.price,
+      })),
+    });
+
+    try {
+      const order = await this.prisma.$transaction(async (tx) => {
+        const currentCart = await tx.cart.findUnique({
+          where: { userId },
+          include: {
+            items: {
+              include: {
+                product: {
+                  select: {
+                    id: true,
+                    title: true,
+                    stock: true,
+                    isPublished: true,
+                  },
                 },
               },
             },
           },
-        },
-      });
+        });
 
-      if (!cart || cart.items.length === 0) {
-        throw new BadRequestException('Cart is empty');
-      }
+        this.assertCartSnapshotMatches(currentCart, cartSnapshot);
 
-      for (const item of cart.items) {
-        if (!item.product.isPublished) {
-          throw new BadRequestException(
-            `Product "${item.product.title}" is no longer available`,
-          );
-        }
-        if (item.product.stock < item.quantity) {
-          throw new BadRequestException(
-            `Not enough stock for "${item.product.title}". Available: ${item.product.stock}, requested: ${item.quantity}`,
-          );
-        }
-      }
-
-      const total = cart.items.reduce(
-        (sum, item) => sum + item.quantity * item.product.price,
-        0,
-      );
-
-      const order = await tx.order.create({
-        data: {
-          userId,
-          total: Math.round(total * 100) / 100,
-          shippingAddress: dto.shippingAddress,
-          items: {
-            create: cart.items.map((item) => ({
-              productId: item.product.id,
-              quantity: item.quantity,
-              price: item.product.price,
-            })),
-          },
-        },
-        include: {
-          items: {
-            include: {
-              product: { select: { id: true, title: true, images: true } },
+        const order = await tx.order.create({
+          data: {
+            id: orderId,
+            userId,
+            total: cartSnapshot.total,
+            ...this.mapShippingAddress(dto.shippingAddress),
+            items: {
+              create: cartSnapshot.items.map((item) => ({
+                productId: item.productId,
+                quantity: item.quantity,
+                price: item.price,
+              })),
+            },
+            payment: {
+              create: {
+                amount: cartSnapshot.total,
+                currency: session.currency,
+                status: PaymentStatus.PENDING,
+                stripeCheckoutSessionId: session.sessionId,
+                stripePaymentIntentId: session.paymentIntentId ?? undefined,
+              },
             },
           },
-        },
+          include: {
+            items: {
+              include: {
+                product: { select: { id: true, title: true, images: true } },
+              },
+            },
+          },
+        });
+
+        for (const item of cartSnapshot.items) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stock: { decrement: item.quantity } },
+          });
+        }
+
+        await tx.cartItem.deleteMany({
+          where: { cartId: cartSnapshot.cartId },
+        });
+
+        return order;
       });
 
-      for (const item of cart.items) {
-        await tx.product.update({
-          where: { id: item.product.id },
-          data: { stock: { decrement: item.quantity } },
-        });
-      }
-
-      await tx.cartItem.deleteMany({ where: { cartId: cart.id } });
-
-      return this.formatOrderResponse(order);
-    });
+      return {
+        order: this.formatOrderResponse(order),
+        checkoutUrl: session.checkoutUrl,
+      };
+    } catch (error) {
+      await this.paymentsService.expireCheckoutSession(session.sessionId);
+      throw error;
+    }
   }
 
   async getOrders(
@@ -171,7 +210,7 @@ export class OrdersService {
   ): Promise<OrderResponseDto> {
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
-      include: { items: true },
+      include: { items: true, payment: true },
     });
 
     if (!order) {
@@ -186,7 +225,7 @@ export class OrdersService {
       throw new BadRequestException('Only pending orders can be cancelled');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.order.update({
         where: { id: orderId },
         data: { status: OrderStatus.CANCELLED },
@@ -199,7 +238,6 @@ export class OrdersService {
         },
       });
 
-      // Restore stock for each item
       for (const item of order.items) {
         await tx.product.update({
           where: { id: item.productId },
@@ -207,8 +245,21 @@ export class OrdersService {
         });
       }
 
+      if (order.payment && order.payment.status !== PaymentStatus.SUCCEEDED) {
+        await tx.payment.update({
+          where: { orderId },
+          data: { status: PaymentStatus.FAILED },
+        });
+      }
+
       return this.formatOrderResponse(updated);
     });
+
+    await this.paymentsService.expireCheckoutSession(
+      order.payment?.stripeCheckoutSessionId,
+    );
+
+    return updatedOrder;
   }
 
   async updateStatus(
@@ -242,7 +293,14 @@ export class OrdersService {
     id: string;
     status: OrderStatus;
     total: number;
-    shippingAddress: string;
+    recipientName: string;
+    phone: string;
+    country: string;
+    city: string;
+    streetLine1: string;
+    streetLine2: string | null;
+    postalCode: string;
+    deliveryInstructions: string | null;
     userId: string;
     createdAt: Date;
     updatedAt: Date;
@@ -267,12 +325,174 @@ export class OrdersService {
       id: order.id,
       status: order.status,
       total: order.total,
-      shippingAddress: order.shippingAddress,
+      shippingAddress: {
+        recipientName: order.recipientName,
+        phone: order.phone,
+        country: order.country,
+        city: order.city,
+        streetLine1: order.streetLine1,
+        streetLine2: order.streetLine2,
+        postalCode: order.postalCode,
+        deliveryInstructions: order.deliveryInstructions,
+      },
       userId: order.userId,
       items,
       itemsCount: items.reduce((sum, i) => sum + i.quantity, 0),
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
+    };
+  }
+
+  private async getCheckoutCartSnapshot(
+    userId: string,
+  ): Promise<CheckoutCartSnapshot> {
+    const [user, cart] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true },
+      }),
+      this.prisma.cart.findUnique({
+        where: { userId },
+        include: {
+          items: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  title: true,
+                  price: true,
+                  stock: true,
+                  images: true,
+                  isPublished: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!cart || cart.items.length === 0) {
+      throw new BadRequestException('Cart is empty');
+    }
+
+    this.validateCartItems(
+      cart.items.map((item) => ({
+        title: item.product.title,
+        stock: item.product.stock,
+        isPublished: item.product.isPublished,
+        quantity: item.quantity,
+      })),
+    );
+
+    const items = cart.items.map((item) => ({
+      productId: item.product.id,
+      title: item.product.title,
+      images: item.product.images,
+      quantity: item.quantity,
+      price: item.product.price,
+    }));
+
+    const total =
+      Math.round(
+        items.reduce((sum, item) => sum + item.quantity * item.price, 0) * 100,
+      ) / 100;
+
+    return {
+      cartId: cart.id,
+      userEmail: user.email,
+      items,
+      total,
+    };
+  }
+
+  private assertCartSnapshotMatches(
+    cart: {
+      id: string;
+      items: Array<{
+        quantity: number;
+        productId: string;
+        product: {
+          title: string;
+          stock: number;
+          isPublished: boolean;
+        };
+      }>;
+    } | null,
+    snapshot: CheckoutCartSnapshot,
+  ): void {
+    if (!cart || cart.items.length === 0) {
+      throw new BadRequestException('Cart is empty');
+    }
+
+    if (cart.items.length !== snapshot.items.length) {
+      throw new BadRequestException(
+        'Cart changed during checkout. Please review your cart and try again.',
+      );
+    }
+
+    const snapshotMap = new Map(
+      snapshot.items.map((item) => [item.productId, item.quantity]),
+    );
+
+    for (const item of cart.items) {
+      const expectedQuantity = snapshotMap.get(item.productId);
+
+      if (expectedQuantity !== item.quantity) {
+        throw new BadRequestException(
+          'Cart changed during checkout. Please review your cart and try again.',
+        );
+      }
+    }
+
+    this.validateCartItems(
+      cart.items.map((item) => ({
+        title: item.product.title,
+        stock: item.product.stock,
+        isPublished: item.product.isPublished,
+        quantity: item.quantity,
+      })),
+    );
+  }
+
+  private validateCartItems(
+    items: Array<{
+      title: string;
+      stock: number;
+      isPublished: boolean;
+      quantity: number;
+    }>,
+  ): void {
+    for (const item of items) {
+      if (!item.isPublished) {
+        throw new BadRequestException(
+          `Product "${item.title}" is no longer available`,
+        );
+      }
+      if (item.stock < item.quantity) {
+        throw new BadRequestException(
+          `Not enough stock for "${item.title}". Available: ${item.stock}, requested: ${item.quantity}`,
+        );
+      }
+    }
+  }
+
+  private mapShippingAddress(
+    shippingAddress: ShippingAddressDto,
+  ): ShippingAddressResponseDto {
+    return {
+      recipientName: shippingAddress.recipientName,
+      phone: shippingAddress.phone,
+      country: shippingAddress.country,
+      city: shippingAddress.city,
+      streetLine1: shippingAddress.streetLine1,
+      streetLine2: shippingAddress.streetLine2 ?? null,
+      postalCode: shippingAddress.postalCode,
+      deliveryInstructions: shippingAddress.deliveryInstructions ?? null,
     };
   }
 }

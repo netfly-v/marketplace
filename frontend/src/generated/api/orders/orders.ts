@@ -25,6 +25,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  CreateOrderCheckoutResponseDto,
   CreateOrderDto,
   OrderResponseDto,
   OrdersControllerFindAllParams,
@@ -48,7 +49,7 @@ export const ordersControllerCreate = (
 ) => {
       
       
-      return customInstance<OrderResponseDto>(
+      return customInstance<CreateOrderCheckoutResponseDto>(
       {url: `/api/orders`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
       data: createOrderDto, signal

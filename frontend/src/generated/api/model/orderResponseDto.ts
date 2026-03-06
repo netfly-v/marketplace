@@ -6,13 +6,14 @@
  * OpenAPI spec version: 1.0.0
  */
 import type { OrderResponseDtoStatus } from './orderResponseDtoStatus';
+import type { ShippingAddressResponseDto } from './shippingAddressResponseDto';
 import type { OrderItemResponseDto } from './orderItemResponseDto';
 
 export interface OrderResponseDto {
   id: string;
   status: OrderResponseDtoStatus;
   total: number;
-  shippingAddress: string;
+  shippingAddress: ShippingAddressResponseDto;
   userId: string;
   items: OrderItemResponseDto[];
   itemsCount: number;
